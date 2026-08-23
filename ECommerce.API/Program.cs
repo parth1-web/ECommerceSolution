@@ -114,8 +114,7 @@ builder.Services.AddDbContext<AppDbContext>(
     {
         options.UseMySql(
             connectionString,
-            ServerVersion.AutoDetect(
-                connectionString));
+            new MySqlServerVersion(new Version(8, 0, 0)));
     });
 
 

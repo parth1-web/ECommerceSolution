@@ -32,7 +32,7 @@ jobs:
           --health-retries=10
 
     env:
-      ConnectionStrings__DefaultConnection: "Server=127.0.0.1;Port=3306;Database=Ecommercedb;User=root;Password=;"
+      ConnectionStrings__DefaultConnection: "Server=127.0.0.1;Port=3306;Database=Ecommercedb;User=root;Password=root;"
 
       Jwt__Key: "CI_TEST_JWT_SECRET_KEY_12345678901234567890123456789012345678901234567890"
       Jwt__Issuer: "ECommerceAPI"

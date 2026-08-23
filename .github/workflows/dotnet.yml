@@ -40,24 +40,53 @@ jobs:
 
     steps:
 
+      # ------------------------------------------
+      # Checkout
+      # ------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      # ------------------------------------------
+      # .NET
+      # ------------------------------------------
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
 
+
+      # ------------------------------------------
+      # Restore
+      # ------------------------------------------
+
       - name: Restore dependencies
         run: dotnet restore ECommerceSolution.slnx
 
+
+      # ------------------------------------------
+      # Build
+      # ------------------------------------------
+
       - name: Build solution
         run: dotnet build ECommerceSolution.slnx --configuration Release --no-restore
+
+
+      # ------------------------------------------
+      # MySQL Client
+      # ------------------------------------------
 
       - name: Install MySQL client
         run: |
           sudo apt-get update
           sudo apt-get install -y mysql-client
+
+
+      # ------------------------------------------
+      # Wait for MySQL
+      # ------------------------------------------
 
       - name: Wait for MySQL
         run: |
@@ -71,11 +100,39 @@ jobs:
             sleep 2
           done
 
+
+      # ------------------------------------------
+      # Install EF Core CLI
+      # ------------------------------------------
+
+      - name: Install EF Core CLI
+        run: |
+          dotnet tool install --global dotnet-ef --version 8.0.11
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+
+      # ------------------------------------------
+      # Verify EF CLI
+      # ------------------------------------------
+
+      - name: Verify EF Core CLI
+        run: dotnet ef --version
+
+
+      # ------------------------------------------
+      # Database migrations
+      # ------------------------------------------
+
       - name: Run EF migrations
         run: |
           dotnet ef database update \
             --project ECommerce.Infrastructure \
             --startup-project ECommerce.API
+
+
+      # ------------------------------------------
+      # Tests
+      # ------------------------------------------
 
       - name: Run tests
         run: dotnet test ECommerceSolution.slnx --configuration Release --no-build

@@ -1,0 +1,54 @@
+services:
+ mysql:
+  image: mysql:8.0
+  container_name: ecommerce-mysql
+  restart: unless-stopped
+
+  environment:
+    MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    MYSQL_DATABASE: Ecommercedb
+
+  ports:
+    - "3307:3306"
+
+  volumes:
+    - mysql_data:/var/lib/mysql
+
+  healthcheck:
+    test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 30s
+
+
+ api:
+    image: ecommerce-api:latest
+    container_name: ecommerce-api
+    restart: unless-stopped
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+
+      ConnectionStrings__DefaultConnection: "server=mysql;port=3306;database=Ecommercedb;user=root;password="
+
+      Jwt__Key: REMOVED_JWT_SECRET
+      Jwt__Issuer: ECommerceAPI
+      Jwt__Audience: ECommerceClient
+      Jwt__ExpirationMinutes: 60
+
+      Khalti__SecretKey: ${KHALTI_SECRET_KEY}
+
+      ESewa__SecretKey: ${ESEWA_SECRET_KEY}
+
+    ports:
+      - "8080:8080"
+
+
+volumes:
+  mysql_data:

@@ -1,0 +1,51 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build
+[Bb]in/
+[Oo]bj/
+
+# Test results
+TestResults/
+*.trx
+
+# NuGet
+*.nupkg
+*.snupkg
+
+# ASP.NET
+appsettings.Development.json
+appsettings.Local.json
+
+# Environment / secrets
+.env
+.env.local
+.env.production
+
+# Docker
+docker-data/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rider / JetBrains
+.idea/
+
+# Visual Studio Code
+.vscode/
+
+# Certificates
+*.pfx
+*.p12
+
+# User secrets
+secrets.json

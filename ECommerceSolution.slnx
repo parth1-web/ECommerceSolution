@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".env" />
+    <File Path=".env.example" />
+    <File Path=".gitignore" />
+    <File Path="docker-compose.yml" />
+  </Folder>
+  <Project Path="ECommerce.API/ECommerce.API.csproj" />
+  <Project Path="ECommerce.Application/ECommerce.Application.csproj" />
+  <Project Path="ECommerce.Domain/ECommerce.Domain.csproj" />
+  <Project Path="ECommerce.Infrastructure/ECommerce.Infrastructure.csproj" />
+  <Project Path="ECommerce.Tests/ECommerce.Tests.csproj" Id="1d212f86-abb9-46fb-90d6-5398509f1435" />
+</Solution>

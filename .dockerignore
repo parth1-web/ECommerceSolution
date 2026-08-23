@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.git/
+**/.gitignore
+**/TestResults/
+**/*.user
+**/*.suo
+ECommerce.Tests/
+README.md

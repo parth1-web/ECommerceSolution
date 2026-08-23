@@ -1,6 +1,5 @@
-# GitHub Actions CI Workflow
 
-name: ECommerce API CI
+name: .NET Build and Test
 
 on:
   push:
@@ -13,30 +12,42 @@ on:
 
 jobs:
   build-and-test:
-
     runs-on: ubuntu-latest
 
     steps:
 
-      # 1. Checkout repository
+      # ----------------------------------------
+      # Checkout repository
+      # ----------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Install .NET 8
+
+      # ----------------------------------------
+      # Setup .NET
+      # ----------------------------------------
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      # 3. Restore dependencies
+
+      # ----------------------------------------
+      # Restore dependencies
+      # ----------------------------------------
       - name: Restore dependencies
-        run: dotnet restore ECommerceSolution.sln
+        run: dotnet restore ECommerceSolution.slnx
 
-      # 4. Build solution
+
+      # ----------------------------------------
+      # Build solution
+      # ----------------------------------------
       - name: Build solution
-        run: dotnet build ECommerceSolution.sln --configuration Release --no-restore
+        run: dotnet build ECommerceSolution.slnx --configuration Release --no-restore
 
-      # 5. Run tests
+
+      # ----------------------------------------
+      # Run tests
+      # ----------------------------------------
       - name: Run tests
-        run: dotnet test ECommerceSolution.sln --configuration Release --no-build
-
+        run: dotnet test ECommerceSolution.slnx --configuration Release --no-build

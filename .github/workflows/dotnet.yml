@@ -9,6 +9,9 @@ on:
     branches:
       - main
 
+  # Allow this workflow to be called as a reusable workflow
+  workflow_call: {}
+
 jobs:
   build-and-test:
 
@@ -128,6 +131,39 @@ jobs:
           dotnet ef database update \
             --project ECommerce.Infrastructure \
             --startup-project ECommerce.API
+
+
+      - name: Seed CI catalog data
+        run: |
+         mysql \
+         -h 127.0.0.1 \
+         -P 3306 \
+         -u root \
+         -proot \
+         Ecommercedb \
+         -e "
+          INSERT INTO Categories
+          (Id, Name, Description, IsActive, CreatedAt)
+          VALUES
+          (1, 'Test Category', 'CI test category', 1, UTC_TIMESTAMP())
+          ON DUPLICATE KEY UPDATE
+          Name = VALUES(Name),
+          Description = VALUES(Description),
+          IsActive = VALUES(IsActive);
+
+          INSERT INTO Products
+          (Id, Name, Description, Price, Stock, ImageUrl, IsActive, CreatedAt, CategoryId)
+          VALUES
+          (1, 'Test Product', 'CI test product', 1000.00, 100, '', 1, UTC_TIMESTAMP(), 1)
+          ON DUPLICATE KEY UPDATE
+          Name = VALUES(Name),
+          Description = VALUES(Description),
+          Price = VALUES(Price),
+          Stock = VALUES(Stock),
+          ImageUrl = VALUES(ImageUrl),
+          IsActive = VALUES(IsActive),
+          CategoryId = VALUES(CategoryId);
+      
 
 
       # ------------------------------------------

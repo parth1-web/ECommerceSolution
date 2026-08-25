@@ -19,7 +19,7 @@ public class EsewaPaymentService : IEsewaPaymentService
     private readonly ESewaSettings _settings;
     private readonly AppDbContext _context;
     private readonly ILogger<EsewaPaymentService> _logger;
-    private IOptions<ESewaSettings> settings;
+    
 
     public EsewaPaymentService(
     HttpClient httpClient,

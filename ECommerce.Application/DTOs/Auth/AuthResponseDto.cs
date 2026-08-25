@@ -15,9 +15,11 @@
         public string Token { get; set; } = string.Empty;
 
         public DateTime ExpiresAt { get; set; }
-        public string AccessToken { get; internal set; }
+        public string AccessToken { get; set; } = string.Empty;
+
+        public string RefreshToken { get; set; } = string.Empty;
         public DateTime AccessTokenExpiresAt { get; internal set; }
-        public string RefreshToken { get; internal set; }
+        
         public DateTime RefreshTokenExpiresAt { get; internal set; }
     }
 }

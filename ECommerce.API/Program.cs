@@ -311,6 +311,8 @@ builder.Services
 builder.Services.AddValidatorsFromAssemblyContaining<
     CreatePaymentDtoValidator>();
 
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>();
 
 // ==========================================================
 // Build Application
@@ -365,6 +367,8 @@ app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseAuthentication();
 
 app.UseAuthorization();
+
+app.MapHealthChecks("/health");
 
 
 // ==========================================================

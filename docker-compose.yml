@@ -37,10 +37,10 @@ services:
 
       ConnectionStrings__DefaultConnection: "server=mysql;port=3306;database=Ecommercedb;user=root;password="
 
-      Jwt__Key: REMOVED_JWT_SECRET
-      Jwt__Issuer: ECommerceAPI
-      Jwt__Audience: ECommerceClient
-      Jwt__ExpirationMinutes: 60
+      environment:
+      Jwt__Key: ${JWT_KEY}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
 
       Khalti__SecretKey: ${KHALTI_SECRET_KEY}
 

@@ -41,4 +41,17 @@ public class PaymentRepository : IPaymentRepository
         await _context.SaveChangesAsync(
             cancellationToken);
     }
+
+
+    public async Task<Payment?> GetByTransactionIdAsync(
+    string transactionId,
+    CancellationToken cancellationToken = default)
+    {
+        return await _context.Payments
+            .FirstOrDefaultAsync(
+                p => p.TransactionId == transactionId,
+                cancellationToken);
+    }
+
+
 }

@@ -1,5 +1,4 @@
-﻿
-using ECommerce.Application.DTOs.Payments;
+﻿using ECommerce.Application.DTOs.Payments;
 
 namespace ECommerce.Application.Interfaces;
 
@@ -23,5 +22,8 @@ public interface IPaymentService
     Task<PaymentDto> VerifyKhaltiPaymentAsync(
         string pidx,
         CancellationToken cancellationToken = default);
-}
 
+    Task<PaymentDto?> GetPaymentByTransactionUuidAsync(
+        string transactionUuid,
+        CancellationToken cancellationToken = default);
+}

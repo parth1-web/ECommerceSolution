@@ -1,4 +1,5 @@
-﻿using ECommerce.Application.DTOs.Payments;
+﻿
+using ECommerce.Application.DTOs.Payments;
 using ECommerce.Application.Interfaces;
 using ECommerce.Domain.Entities;
 using ECommerce.Domain.Enums;
@@ -14,16 +15,22 @@ public class PaymentService : IPaymentService
     private readonly ILogger<PaymentService> _logger;
 
     public PaymentService(
-    IPaymentRepository paymentRepository,
-    IOrderRepository orderRepository,
-    IKhaltiPaymentService khaltiPaymentService,
-    ILogger<PaymentService> logger)
+        IPaymentRepository paymentRepository,
+        IOrderRepository orderRepository,
+        IKhaltiPaymentService khaltiPaymentService,
+        ILogger<PaymentService> logger)
     {
         _paymentRepository = paymentRepository;
         _orderRepository = orderRepository;
         _khaltiPaymentService = khaltiPaymentService;
         _logger = logger;
     }
+
+
+    // ============================================================
+    // CREATE PAYMENT
+    // POST: api/Payments
+    // ============================================================
 
     public async Task<PaymentDto> CreatePaymentAsync(
         CreatePaymentDto dto,
@@ -58,6 +65,12 @@ public class PaymentService : IPaymentService
                 "Cannot make payment for a cancelled order.");
         }
 
+        if (order.TotalAmount <= 0)
+        {
+            throw new InvalidOperationException(
+                "Order amount must be greater than zero.");
+        }
+
         var payment = new Payment
         {
             OrderId = order.Id,
@@ -67,11 +80,18 @@ public class PaymentService : IPaymentService
             PaymentDate = DateTime.UtcNow
         };
 
+
+        // --------------------------------------------------------
+        // CASH ON DELIVERY
+        // --------------------------------------------------------
+
         if (dto.Method == PaymentMethod.CashOnDelivery)
         {
             payment.Status = PaymentStatus.Pending;
+
             order.Status = OrderStatus.Confirmed;
         }
+
 
         await _paymentRepository.CreateAsync(
             payment,
@@ -80,15 +100,24 @@ public class PaymentService : IPaymentService
         await _paymentRepository.SaveChangesAsync(
             cancellationToken);
 
+
         _logger.LogInformation(
-    "Payment {PaymentId} created for OrderId {OrderId}. Method: {PaymentMethod}, Amount: {Amount}",
-    payment.Id,
-    payment.OrderId,
-    payment.Method,
-    payment.Amount);
+            "Payment {PaymentId} created for OrderId {OrderId}. " +
+            "Method: {PaymentMethod}, Amount: {Amount}",
+            payment.Id,
+            payment.OrderId,
+            payment.Method,
+            payment.Amount);
+
 
         return MapToDto(payment);
     }
+
+
+    // ============================================================
+    // GET PAYMENT BY ORDER
+    // GET: api/Payments/order/{orderId}
+    // ============================================================
 
     public async Task<PaymentDto?> GetPaymentByOrderIdAsync(
         int orderId,
@@ -118,6 +147,12 @@ public class PaymentService : IPaymentService
         return MapToDto(payment);
     }
 
+
+    // ============================================================
+    // KHALTI INITIATE
+    // POST: api/Payments/khalti/initiate
+    // ============================================================
+
     public async Task<KhaltiPaymentInitiationDto>
         InitiateKhaltiPaymentAsync(
             int orderId,
@@ -141,6 +176,12 @@ public class PaymentService : IPaymentService
                 "Cannot make payment for a cancelled order.");
         }
 
+        if (order.TotalAmount <= 0)
+        {
+            throw new InvalidOperationException(
+                "Order amount must be greater than zero.");
+        }
+
         var existingPayment =
             await _paymentRepository.GetByOrderIdAsync(
                 orderId,
@@ -152,6 +193,7 @@ public class PaymentService : IPaymentService
                 "Payment already exists for this order.");
         }
 
+
         var payment = new Payment
         {
             OrderId = order.Id,
@@ -161,12 +203,14 @@ public class PaymentService : IPaymentService
             PaymentDate = DateTime.UtcNow
         };
 
+
         await _paymentRepository.CreateAsync(
             payment,
             cancellationToken);
 
         await _paymentRepository.SaveChangesAsync(
             cancellationToken);
+
 
         try
         {
@@ -176,10 +220,13 @@ public class PaymentService : IPaymentService
                     order.TotalAmount,
                     cancellationToken);
 
+
             _logger.LogInformation(
-    "Khalti payment initiated for OrderId {OrderId}. Pidx: {Pidx}",
-    order.Id,
-    khaltiResult.Pidx);
+                "Khalti payment initiated for OrderId {OrderId}. " +
+                "Pidx: {Pidx}",
+                order.Id,
+                khaltiResult.Pidx);
+
 
             return new KhaltiPaymentInitiationDto
             {
@@ -200,6 +247,12 @@ public class PaymentService : IPaymentService
         }
     }
 
+
+    // ============================================================
+    // KHALTI VERIFY
+    // GET: api/Payments/khalti/callback
+    // ============================================================
+
     public async Task<PaymentDto> VerifyKhaltiPaymentAsync(
         string pidx,
         CancellationToken cancellationToken = default)
@@ -210,10 +263,12 @@ public class PaymentService : IPaymentService
                 "Khalti payment identifier is required.");
         }
 
+
         var khaltiResult =
             await _khaltiPaymentService.VerifyPaymentAsync(
                 pidx,
                 cancellationToken);
+
 
         if (string.IsNullOrWhiteSpace(
                 khaltiResult.PurchaseOrderId))
@@ -221,6 +276,7 @@ public class PaymentService : IPaymentService
             throw new InvalidOperationException(
                 "Khalti verification did not return an order ID.");
         }
+
 
         if (!int.TryParse(
                 khaltiResult.PurchaseOrderId,
@@ -230,10 +286,12 @@ public class PaymentService : IPaymentService
                 "Invalid Khalti purchase order ID.");
         }
 
+
         var payment =
             await _paymentRepository.GetByOrderIdAsync(
                 orderId,
                 cancellationToken);
+
 
         if (payment == null)
         {
@@ -241,11 +299,13 @@ public class PaymentService : IPaymentService
                 "Payment not found for this order.");
         }
 
+
         if (payment.Method != PaymentMethod.Khalti)
         {
             throw new InvalidOperationException(
                 "This order is not using Khalti payment.");
         }
+
 
         var expectedAmountInPaisa =
             checked(
@@ -253,7 +313,9 @@ public class PaymentService : IPaymentService
                     payment.Amount * 100m,
                     MidpointRounding.AwayFromZero));
 
-        if (khaltiResult.TotalAmount != expectedAmountInPaisa)
+
+        if (khaltiResult.TotalAmount !=
+            expectedAmountInPaisa)
         {
             payment.Status = PaymentStatus.Failed;
 
@@ -261,19 +323,22 @@ public class PaymentService : IPaymentService
                 cancellationToken);
 
             throw new InvalidOperationException(
-                "Khalti payment amount does not match the order amount.");
+                "Khalti payment amount does not match " +
+                "the order amount.");
         }
+
 
         if (!string.Equals(
                 khaltiResult.Status,
                 "Completed",
                 StringComparison.OrdinalIgnoreCase))
-            
         {
             _logger.LogWarning(
-"Khalti payment was not completed for OrderId {OrderId}. Status: {Status}",
-payment.OrderId,
-khaltiResult.Status);
+                "Khalti payment was not completed for " +
+                "OrderId {OrderId}. Status: {Status}",
+                payment.OrderId,
+                khaltiResult.Status);
+
             payment.Status = PaymentStatus.Failed;
 
             await _paymentRepository.SaveChangesAsync(
@@ -284,17 +349,24 @@ khaltiResult.Status);
                 $"Current status: {khaltiResult.Status}");
         }
 
+
         payment.Status = PaymentStatus.Paid;
-        payment.TransactionId = khaltiResult.TransactionId;
+
+        payment.TransactionId =
+            khaltiResult.TransactionId;
+
 
         _logger.LogInformation(
-    "Khalti payment completed successfully for OrderId {OrderId}. TransactionId: {TransactionId}",
-    payment.OrderId,
-    payment.TransactionId);
+            "Khalti payment completed successfully " +
+            "for OrderId {OrderId}. TransactionId: {TransactionId}",
+            payment.OrderId,
+            payment.TransactionId);
+
 
         var order = await _orderRepository.GetByIdAsync(
             orderId,
             cancellationToken);
+
 
         if (order == null)
         {
@@ -302,18 +374,63 @@ khaltiResult.Status);
                 "Order not found for this payment.");
         }
 
+
         if (order.Status == OrderStatus.Pending)
         {
             order.Status = OrderStatus.Confirmed;
         }
 
+
         await _paymentRepository.SaveChangesAsync(
             cancellationToken);
+
 
         return MapToDto(payment);
     }
 
-    private static PaymentDto MapToDto(Payment payment)
+
+    // ============================================================
+    // GET PAYMENT BY TRANSACTION UUID
+    //
+    // Used by eSewa callback.
+    //
+    // eSewa sends transaction_uuid in the encoded
+    // callback data instead of orderId.
+    // ============================================================
+
+    public async Task<PaymentDto?> GetPaymentByTransactionUuidAsync(
+        string transactionUuid,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(transactionUuid))
+        {
+            return null;
+        }
+
+
+        var payment =
+            await _paymentRepository
+                .GetByTransactionIdAsync(
+                    transactionUuid,
+                    cancellationToken);
+
+
+        if (payment == null)
+        {
+            return null;
+        }
+
+
+        return MapToDto(payment);
+    }
+
+
+    // ============================================================
+    // MAP ENTITY TO DTO
+    // ============================================================
+
+    private static PaymentDto MapToDto(
+        Payment payment)
     {
         return new PaymentDto
         {

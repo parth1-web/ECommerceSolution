@@ -29,6 +29,7 @@ public class PaymentsController : ControllerBase
 
     // =========================================================
     // CREATE PAYMENT
+    // POST: api/Payments
     // =========================================================
 
     [Authorize]
@@ -67,6 +68,7 @@ public class PaymentsController : ControllerBase
 
     // =========================================================
     // GET PAYMENT BY ORDER ID
+    // GET: api/Payments/order/{orderId}
     // =========================================================
 
     [Authorize]
@@ -102,21 +104,117 @@ public class PaymentsController : ControllerBase
 
 
     // =========================================================
-    // INITIATE ESEWA PAYMENT
+    // KHALTI INITIATE
+    // POST: api/Payments/khalti/initiate
     // =========================================================
-    //
-    // POST:
-    // /api/Payments/esewa/initiate
-    //
-    // MVC calls this endpoint.
-    //
-    // The API:
-    // 1. Finds the order
-    // 2. Creates Pending payment
-    // 3. Generates transaction_uuid
-    // 4. Generates eSewa signature
-    // 5. Returns form data to MVC
-    //
+
+    [Authorize]
+    [HttpPost("khalti/initiate")]
+    public async Task<IActionResult> InitiateKhaltiPayment(
+        [FromBody] CreatePaymentDto dto,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirstValue(
+            ClaimTypes.NameIdentifier);
+
+        if (!int.TryParse(userId, out var currentUserId))
+        {
+            return Unauthorized();
+        }
+
+        // -----------------------------------------------------
+        // The payment method must be Khalti.
+        // -----------------------------------------------------
+
+        if (dto.Method != ECommerce.Domain.Enums.PaymentMethod.Khalti)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Payment method must be Khalti."
+            });
+        }
+
+        try
+        {
+            var result =
+                await _paymentService
+                    .InitiateKhaltiPaymentAsync(
+                        dto.OrderId,
+                        currentUserId,
+                        cancellationToken);
+
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+    }
+
+
+    // =========================================================
+    // KHALTI CALLBACK
+    // GET: api/Payments/khalti/callback?pidx=...
+    // =========================================================
+
+    [AllowAnonymous]
+    [HttpGet("khalti/callback")]
+    public async Task<IActionResult> KhaltiCallback(
+        [FromQuery] string? pidx,
+        CancellationToken cancellationToken)
+    {
+        // -----------------------------------------------------
+        // pidx is required.
+        //
+        // This also satisfies:
+        //
+        // KhaltiCallback_WithoutPidx_ReturnsBadRequest
+        // -----------------------------------------------------
+
+        if (string.IsNullOrWhiteSpace(pidx))
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message =
+                    "Khalti payment identifier is required."
+            });
+        }
+
+        try
+        {
+            var payment =
+                await _paymentService
+                    .VerifyKhaltiPaymentAsync(
+                        pidx,
+                        cancellationToken);
+
+            return Ok(new
+            {
+                success = true,
+                message =
+                    "Khalti payment verified successfully.",
+                payment
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
+    }
+
+
+    // =========================================================
+    // ESEWA INITIATE
+    // POST: api/Payments/esewa/initiate
     // =========================================================
 
     [Authorize]
@@ -136,10 +234,11 @@ public class PaymentsController : ControllerBase
         try
         {
             var result =
-                await _esewaPaymentService.InitiatePaymentAsync(
-                    dto.OrderId,
-                    currentUserId,
-                    cancellationToken);
+                await _esewaPaymentService
+                    .InitiatePaymentAsync(
+                        dto.OrderId,
+                        currentUserId,
+                        cancellationToken);
 
             return Ok(result);
         }
@@ -155,48 +254,36 @@ public class PaymentsController : ControllerBase
 
     // =========================================================
     // ESEWA SUCCESS CALLBACK
-    // =========================================================
     //
-    // eSewa redirects here:
-    //
-    // GET
-    // /api/Payments/esewa/success?data=BASE64_DATA
-    //
-    // Example decoded data:
-    //
-    // {
-    //   "transaction_code": "000GXJM",
-    //   "status": "COMPLETE",
-    //   "total_amount": "800.0",
-    //   "transaction_uuid": "...",
-    //   "product_code": "EPAYTEST",
-    //   "signed_field_names": "...",
-    //   "signature": "..."
-    // }
+    // GET:
+    // api/Payments/esewa/success?data=BASE64_DATA
     //
     // =========================================================
 
     [AllowAnonymous]
     [HttpGet("esewa/success")]
     public async Task<IActionResult> EsewaSuccess(
-        [FromQuery] string data,
+        [FromQuery] string? data,
         CancellationToken cancellationToken)
     {
-        // -----------------------------------------------------
-        // STEP 1: Validate data
-        // -----------------------------------------------------
+        // =====================================================
+        // STEP 1: Validate callback data
+        // =====================================================
 
         if (string.IsNullOrWhiteSpace(data))
         {
-            return RedirectToMvcFailure(
-                null,
-                "eSewa callback data is missing.");
+            return BadRequest(new
+            {
+                success = false,
+                message =
+                    "eSewa callback data is missing."
+            });
         }
 
 
-        // -----------------------------------------------------
-        // STEP 2: Base64 decode
-        // -----------------------------------------------------
+        // =====================================================
+        // STEP 2: Decode Base64
+        // =====================================================
 
         string decodedData;
 
@@ -210,15 +297,18 @@ public class PaymentsController : ControllerBase
         }
         catch (FormatException)
         {
-            return RedirectToMvcFailure(
-                null,
-                "Invalid eSewa callback data.");
+            return BadRequest(new
+            {
+                success = false,
+                message =
+                    "Invalid Base64 eSewa callback data."
+            });
         }
 
 
-        // -----------------------------------------------------
+        // =====================================================
         // STEP 3: Parse JSON
-        // -----------------------------------------------------
+        // =====================================================
 
         JsonDocument document;
 
@@ -229,9 +319,12 @@ public class PaymentsController : ControllerBase
         }
         catch (JsonException)
         {
-            return RedirectToMvcFailure(
-                null,
-                "Invalid eSewa callback JSON.");
+            return BadRequest(new
+            {
+                success = false,
+                message =
+                    "Invalid eSewa callback JSON."
+            });
         }
 
 
@@ -240,9 +333,31 @@ public class PaymentsController : ControllerBase
             var root = document.RootElement;
 
 
-            // -------------------------------------------------
-            // STEP 4: Extract callback status
-            // -------------------------------------------------
+            // =================================================
+            // STEP 4: Extract transaction UUID
+            // =================================================
+
+            var transactionUuid =
+                root.TryGetProperty(
+                    "transaction_uuid",
+                    out var transactionUuidElement)
+                    ? transactionUuidElement.GetString()
+                    : null;
+
+            if (string.IsNullOrWhiteSpace(transactionUuid))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message =
+                        "eSewa transaction UUID is missing."
+                });
+            }
+
+
+            // =================================================
+            // STEP 5: Extract callback status
+            // =================================================
 
             var status =
                 root.TryGetProperty(
@@ -252,42 +367,15 @@ public class PaymentsController : ControllerBase
                     : null;
 
 
-            // -------------------------------------------------
-            // STEP 5: Extract transaction_uuid
-            // -------------------------------------------------
-
-            var transactionUuid =
-                root.TryGetProperty(
-                    "transaction_uuid",
-                    out var transactionUuidElement)
-                    ? transactionUuidElement.GetString()
-                    : null;
-
-
-            // -------------------------------------------------
-            // Validate transaction UUID
-            // -------------------------------------------------
-
-            if (string.IsNullOrWhiteSpace(transactionUuid))
-            {
-                return RedirectToMvcFailure(
-                    null,
-                    "eSewa transaction UUID is missing.");
-            }
-
-
-            // -------------------------------------------------
-            // STEP 6: Check callback status
-            // -------------------------------------------------
+            // =================================================
+            // STEP 6: Callback status check
             //
             // IMPORTANT:
             //
-            // We do NOT mark the payment as Paid here.
+            // COMPLETE is NOT trusted as proof of payment.
             //
-            // The callback status is only an indication that
-            // we should continue to server-side verification.
-            //
-            // -------------------------------------------------
+            // We still perform server-side verification below.
+            // =================================================
 
             if (!string.Equals(
                     status,
@@ -296,19 +384,18 @@ public class PaymentsController : ControllerBase
             {
                 return RedirectToMvcFailure(
                     transactionUuid,
-                    $"eSewa payment status: {status ?? "UNKNOWN"}");
+                    $"eSewa payment status: " +
+                    $"{status ?? "UNKNOWN"}");
             }
 
 
-            // -------------------------------------------------
+            // =================================================
             // STEP 7: Find payment using transaction UUID
-            // -------------------------------------------------
             //
-            // PaymentService internally calls:
+            // PaymentService internally uses:
             //
-            // IPaymentRepository.GetByTransactionIdAsync(...)
-            //
-            // -------------------------------------------------
+            // GetByTransactionIdAsync(...)
+            // =================================================
 
             var payment =
                 await _paymentService
@@ -318,42 +405,40 @@ public class PaymentsController : ControllerBase
 
             if (payment == null)
             {
-                return RedirectToMvcFailure(
-                    transactionUuid,
-                    "Payment not found for this transaction.");
+                return BadRequest(new
+                {
+                    success = false,
+                    message =
+                        "Payment not found for this transaction."
+                });
             }
 
 
-            // -------------------------------------------------
-            // STEP 8: Get OrderId from Payment
-            // -------------------------------------------------
+            // =================================================
+            // STEP 8: Get OrderId
+            // =================================================
 
-            var orderId = payment.OrderId;
+            var orderId =
+                payment.OrderId;
 
 
-            // -------------------------------------------------
+            // =================================================
             // STEP 9: SERVER-SIDE VERIFICATION
-            // -------------------------------------------------
             //
-            // This is the important security step.
+            // EsewaPaymentService will call eSewa's status API
+            // and verify:
             //
-            // EsewaPaymentService.VerifyPaymentAsync()
-            // calls the eSewa transaction status API.
+            // - payment exists
+            // - payment method is eSewa
+            // - status is COMPLETE
+            // - transaction UUID matches
+            // - amount matches
             //
-            // It verifies:
+            // Then it marks:
             //
-            // 1. Payment exists
-            // 2. Payment method is eSewa
-            // 3. eSewa status is COMPLETE
-            // 4. transaction_uuid matches
-            // 5. amount matches
-            //
-            // Then it:
-            //
-            // 6. Marks Payment as Paid
-            // 7. Changes Pending Order to Confirmed
-            //
-            // -------------------------------------------------
+            // Payment = Paid
+            // Order = Confirmed
+            // =================================================
 
             bool verified;
 
@@ -366,17 +451,17 @@ public class PaymentsController : ControllerBase
                             transactionUuid,
                             cancellationToken);
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
             {
                 return RedirectToMvcFailure(
                     transactionUuid,
-                    $"Payment verification failed: {ex.Message}");
+                    ex.Message);
             }
 
 
-            // -------------------------------------------------
+            // =================================================
             // STEP 10: Verification failed
-            // -------------------------------------------------
+            // =================================================
 
             if (!verified)
             {
@@ -386,19 +471,9 @@ public class PaymentsController : ControllerBase
             }
 
 
-            // -------------------------------------------------
-            // STEP 11: Payment successfully verified
-            // -------------------------------------------------
-            //
-            // At this point:
-            //
-            // Payment.Status = Paid
-            //
-            // Order.Status = Confirmed
-            //
-            // The browser is redirected back to MVC.
-            //
-            // -------------------------------------------------
+            // =================================================
+            // STEP 11: Verified successfully
+            // =================================================
 
             return RedirectToMvcSuccess(
                 orderId,
@@ -409,6 +484,10 @@ public class PaymentsController : ControllerBase
 
     // =========================================================
     // ESEWA FAILURE CALLBACK
+    //
+    // GET:
+    // api/Payments/esewa/failure
+    //
     // =========================================================
 
     [AllowAnonymous]
@@ -416,43 +495,87 @@ public class PaymentsController : ControllerBase
     public IActionResult EsewaFailure(
         [FromQuery] string? data)
     {
-        string? transactionUuid = null;
-
         // -----------------------------------------------------
-        // eSewa may send callback data here as well.
-        // Try to decode it if available.
+        // Existing integration test expects:
+        //
+        // GET /api/Payments/esewa/failure
+        // without data
+        //
+        // => 400 BadRequest
         // -----------------------------------------------------
 
-        if (!string.IsNullOrWhiteSpace(data))
+        if (string.IsNullOrWhiteSpace(data))
         {
-            try
+            return BadRequest(new
             {
-                var decodedBytes =
-                    Convert.FromBase64String(data);
-
-                var decodedData =
-                    Encoding.UTF8.GetString(decodedBytes);
-
-                using var document =
-                    JsonDocument.Parse(decodedData);
-
-                var root = document.RootElement;
-
-                if (root.TryGetProperty(
-                        "transaction_uuid",
-                        out var transactionUuidElement))
-                {
-                    transactionUuid =
-                        transactionUuidElement.GetString();
-                }
-            }
-            catch
-            {
-                // Failure callback should still redirect to MVC
-                // even if the callback data cannot be decoded.
-            }
+                success = false,
+                message =
+                    "eSewa failure callback data is missing."
+            });
         }
 
+
+        string? transactionUuid = null;
+
+        try
+        {
+            // -------------------------------------------------
+            // Decode Base64
+            // -------------------------------------------------
+
+            var decodedBytes =
+                Convert.FromBase64String(data);
+
+            var decodedData =
+                Encoding.UTF8.GetString(decodedBytes);
+
+
+            // -------------------------------------------------
+            // Parse JSON
+            // -------------------------------------------------
+
+            using var document =
+                JsonDocument.Parse(decodedData);
+
+            var root =
+                document.RootElement;
+
+
+            // -------------------------------------------------
+            // Extract transaction UUID
+            // -------------------------------------------------
+
+            if (root.TryGetProperty(
+                    "transaction_uuid",
+                    out var transactionUuidElement))
+            {
+                transactionUuid =
+                    transactionUuidElement.GetString();
+            }
+        }
+        catch (FormatException)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message =
+                    "Invalid Base64 eSewa failure data."
+            });
+        }
+        catch (JsonException)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message =
+                    "Invalid eSewa failure callback JSON."
+            });
+        }
+
+
+        // -----------------------------------------------------
+        // Redirect customer to MVC failure page.
+        // -----------------------------------------------------
 
         return RedirectToMvcFailure(
             transactionUuid,
@@ -471,12 +594,7 @@ public class PaymentsController : ControllerBase
         // -----------------------------------------------------
         // IMPORTANT:
         //
-        // Replace this with the actual URL of your MVC app.
-        //
-        // Example:
-        //
-        // https://localhost:xxxx/Payments/Success
-        //
+        // Replace this with your actual MVC application's URL.
         // -----------------------------------------------------
 
         var mvcUrl =
@@ -502,7 +620,7 @@ public class PaymentsController : ControllerBase
         string message)
     {
         // -----------------------------------------------------
-        // Replace with actual MVC failure page URL.
+        // Replace this with your actual MVC application's URL.
         // -----------------------------------------------------
 
         var mvcUrl =

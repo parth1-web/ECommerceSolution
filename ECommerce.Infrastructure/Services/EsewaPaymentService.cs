@@ -290,7 +290,7 @@ public class EsewaPaymentService : IEsewaPaymentService
 
         if (!string.IsNullOrWhiteSpace(transactionCode))
         {
-            payment.TransactionId = transactionCode;
+            payment.ESewaTransactionCode = transactionCode;
         }
 
         if (payment.Order.Status == OrderStatus.Pending)

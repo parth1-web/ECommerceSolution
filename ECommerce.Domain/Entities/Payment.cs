@@ -14,10 +14,15 @@ public class Payment
 
     public PaymentStatus Status { get; set; }
 
+    // For eSewa, this stores the stable transaction_uuid used
+    // for callback correlation and server-side verification.
+    // For Khalti, this stores the provider transaction ID.
     public string? TransactionId { get; set; }
+
+    // eSewa provider transaction_code returned after successful verification.
+    public string? ESewaTransactionCode { get; set; }
 
     public DateTime PaymentDate { get; set; }
 
     public Order Order { get; set; } = null!;
-
 }

@@ -17,13 +17,16 @@ public class PaymentsController : ControllerBase
 {
     private readonly IPaymentService _paymentService;
     private readonly IEsewaPaymentService _esewaPaymentService;
+    private readonly IConfiguration _configuration;
 
     public PaymentsController(
-        IPaymentService paymentService,
-        IEsewaPaymentService esewaPaymentService)
+     IPaymentService paymentService,
+     IEsewaPaymentService esewaPaymentService,
+     IConfiguration configuration)
     {
         _paymentService = paymentService;
         _esewaPaymentService = esewaPaymentService;
+        _configuration = configuration;
     }
 
 
@@ -587,24 +590,26 @@ public class PaymentsController : ControllerBase
     // =========================================================
 
     private IActionResult RedirectToMvcSuccess(
-        int orderId,
-        string transactionUuid)
+    int orderId,
+    string transactionUuid)
     {
-        // -----------------------------------------------------
-        // IMPORTANT:
-        //
-        // Replace this with your actual MVC application's URL.
-        // -----------------------------------------------------
+        var mvcBaseUrl =
+            _configuration["Mvc:BaseUrl"];
+
+        if (string.IsNullOrWhiteSpace(mvcBaseUrl))
+        {
+            return Problem(
+                "MVC application URL is not configured.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
 
         var mvcUrl =
-            "https://localhost:7000/Payments/Success";
+            $"{mvcBaseUrl.TrimEnd('/')}/Payment/Success";
 
         var redirectUrl =
             $"{mvcUrl}" +
-            $"?orderId={Uri.EscapeDataString(
-                orderId.ToString())}" +
-            $"&transactionUuid={Uri.EscapeDataString(
-                transactionUuid)}";
+            $"?orderId={Uri.EscapeDataString(orderId.ToString())}" +
+            $"&transactionUuid={Uri.EscapeDataString(transactionUuid)}";
 
         return Redirect(redirectUrl);
     }
@@ -615,15 +620,21 @@ public class PaymentsController : ControllerBase
     // =========================================================
 
     private IActionResult RedirectToMvcFailure(
-        string? transactionUuid,
-        string message)
+    string? transactionUuid,
+    string message)
     {
-        // -----------------------------------------------------
-        // Replace this with your actual MVC application's URL.
-        // -----------------------------------------------------
+        var mvcBaseUrl =
+            _configuration["Mvc:BaseUrl"];
+
+        if (string.IsNullOrWhiteSpace(mvcBaseUrl))
+        {
+            return Problem(
+                "MVC application URL is not configured.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
 
         var mvcUrl =
-            "https://localhost:7000/Payments/Failure";
+            $"{mvcBaseUrl.TrimEnd('/')}/Payment/Failure";
 
         var redirectUrl =
             $"{mvcUrl}" +
@@ -632,8 +643,8 @@ public class PaymentsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(transactionUuid))
         {
             redirectUrl +=
-                $"&transactionUuid=" +
-                Uri.EscapeDataString(transactionUuid);
+                $"&transactionUuid={Uri.EscapeDataString(
+                    transactionUuid)}";
         }
 
         return Redirect(redirectUrl);

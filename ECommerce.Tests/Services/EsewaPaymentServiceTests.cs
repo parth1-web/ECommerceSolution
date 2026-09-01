@@ -274,8 +274,12 @@ public class EsewaPaymentServiceTests
             payment.Status);
 
         Assert.Equal(
+    transactionUuid,
+    payment.TransactionId);
+
+        Assert.Equal(
             "ESW123456",
-            payment.TransactionId);
+            payment.ESewaTransactionCode);
 
         Assert.Equal(
             OrderStatus.Confirmed,

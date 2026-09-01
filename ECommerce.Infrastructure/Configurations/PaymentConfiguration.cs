@@ -25,6 +25,9 @@ public class PaymentConfiguration
         builder.Property(p => p.TransactionId)
             .HasMaxLength(250);
 
+        builder.Property(p => p.ESewaTransactionCode)
+            .HasMaxLength(250);
+
         builder.Property(p => p.PaymentDate)
             .IsRequired();
 

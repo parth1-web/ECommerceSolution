@@ -180,8 +180,7 @@ public class PaymentsController : ControllerBase
             return BadRequest(new
             {
                 success = false,
-                message =
-                    "Khalti payment identifier is required."
+                message = "Khalti payment identifier is missing."
             });
         }
 
@@ -510,7 +509,7 @@ public class PaymentsController : ControllerBase
             {
                 success = false,
                 message =
-                    "eSewa failure callback data is missing."
+                    "eSewa payment failed: failure callback data is missing."
             });
         }
 

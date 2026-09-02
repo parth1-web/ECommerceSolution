@@ -1,16 +1,18 @@
-﻿
-using ECommerce.Application.Configuration;
-using ECommerce.Application.DTOs.Payments;
-using ECommerce.Application.Interfaces;
-using ECommerce.Domain.Enums;
-using ECommerce.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using System.Globalization;
+﻿using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+
+using ECommerce.Application.Configuration;
+using ECommerce.Application.DTOs.Payments;
+using ECommerce.Application.Interfaces;
+using ECommerce.Domain.Entities;
+using ECommerce.Domain.Enums;
+using ECommerce.Infrastructure.Data;
+
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ECommerce.Infrastructure.Services;
 
@@ -33,8 +35,24 @@ public class EsewaPaymentService : IEsewaPaymentService
         _logger = logger;
     }
 
+
     // ============================================================
     // INITIATE ESEWA PAYMENT
+    //
+    // FLOW:
+    //
+    // No Payment
+    //      -> Create Pending Payment
+    //
+    // Pending Payment
+    //      -> Reuse Existing Transaction UUID
+    //
+    // Failed Payment
+    //      -> Generate New Transaction UUID
+    //      -> Reset To Pending
+    //
+    // Paid Payment
+    //      -> Reject
     // ============================================================
 
     public async Task<ESewaPaymentInitiationDto> InitiatePaymentAsync(
@@ -42,12 +60,18 @@ public class EsewaPaymentService : IEsewaPaymentService
         int userId,
         CancellationToken cancellationToken = default)
     {
+        // ========================================================
+        // FIND ORDER
+        // ========================================================
+
         var order = await _context.Orders
             .Include(o => o.Payment)
             .FirstOrDefaultAsync(
-                o => o.Id == orderId &&
-                     o.UserId == userId,
+                o =>
+                    o.Id == orderId &&
+                    o.UserId == userId,
                 cancellationToken);
+
 
         if (order == null)
         {
@@ -55,17 +79,17 @@ public class EsewaPaymentService : IEsewaPaymentService
                 "Order not found.");
         }
 
+
+        // ========================================================
+        // VALIDATE ORDER STATUS
+        // ========================================================
+
         if (order.Status == OrderStatus.Cancelled)
         {
             throw new InvalidOperationException(
                 "Cannot make payment for a cancelled order.");
         }
 
-        if (order.Payment != null)
-        {
-            throw new InvalidOperationException(
-                "Payment already exists for this order.");
-        }
 
         if (order.TotalAmount <= 0)
         {
@@ -73,107 +97,275 @@ public class EsewaPaymentService : IEsewaPaymentService
                 "Order amount must be greater than zero.");
         }
 
-        // --------------------------------------------------------
-        // Generate stable transaction UUID.
+
+        // ========================================================
+        // PAID PAYMENT
         //
-        // IMPORTANT:
-        // TransactionId stores this UUID permanently.
-        // It must NOT later be replaced with transaction_code.
-        // --------------------------------------------------------
+        // Never allow another payment.
+        // ========================================================
 
-        var transactionUuid = Guid.NewGuid().ToString();
+        if (order.Payment != null &&
+            order.Payment.Status == PaymentStatus.Paid)
+        {
+            throw new InvalidOperationException(
+                "This order has already been paid.");
+        }
 
-        var amount = order.TotalAmount;
 
-        var amountText = amount.ToString(
-            "0.00",
-            CultureInfo.InvariantCulture);
+        Payment payment;
 
-        // --------------------------------------------------------
-        // Generate eSewa signature
-        // --------------------------------------------------------
+        string transactionUuid;
+
+
+        // ========================================================
+        // NO PAYMENT EXISTS
+        //
+        // Create a new Pending payment.
+        // ========================================================
+
+        if (order.Payment == null)
+        {
+            transactionUuid =
+                Guid.NewGuid().ToString();
+
+            payment = new Payment
+            {
+                OrderId = order.Id,
+
+                Amount = order.TotalAmount,
+
+                Method = PaymentMethod.ESewa,
+
+                Status = PaymentStatus.Pending,
+
+                // Stable provider correlation ID.
+                TransactionId = transactionUuid,
+
+                PaymentDate = DateTime.UtcNow
+            };
+
+
+            await _context.Payments.AddAsync(
+                payment,
+                cancellationToken);
+
+
+            await _context.SaveChangesAsync(
+                cancellationToken);
+
+
+            _logger.LogInformation(
+                "Created new eSewa payment. " +
+                "OrderId: {OrderId}, TransactionUuid: {TransactionUuid}",
+                order.Id,
+                transactionUuid);
+        }
+
+
+        // ========================================================
+        // EXISTING PENDING PAYMENT
+        //
+        // Reuse the same transaction UUID.
+        //
+        // This allows users to:
+        //
+        // - Close eSewa
+        // - Return to the website
+        // - Click eSewa again
+        //
+        // without creating duplicate payments.
+        // ========================================================
+
+        else if (order.Payment.Status == PaymentStatus.Pending)
+        {
+            payment = order.Payment;
+
+            transactionUuid =
+                payment.TransactionId;
+
+
+            if (string.IsNullOrWhiteSpace(
+                    transactionUuid))
+            {
+                transactionUuid =
+                    Guid.NewGuid().ToString();
+
+                payment.TransactionId =
+                    transactionUuid;
+
+                await _context.SaveChangesAsync(
+                    cancellationToken);
+            }
+
+
+            _logger.LogInformation(
+                "Reusing pending eSewa payment. " +
+                "OrderId: {OrderId}, TransactionUuid: {TransactionUuid}",
+                order.Id,
+                transactionUuid);
+        }
+
+
+        // ========================================================
+        // FAILED PAYMENT
+        //
+        // Generate a fresh transaction UUID.
+        //
+        // Reset:
+        //
+        // Payment -> Pending
+        //
+        // This allows a completely new payment attempt.
+        // ========================================================
+
+        else if (order.Payment.Status == PaymentStatus.Failed)
+        {
+            payment = order.Payment;
+
+            transactionUuid =
+                Guid.NewGuid().ToString();
+
+
+            payment.TransactionId =
+                transactionUuid;
+
+            payment.ESewaTransactionCode =
+                null;
+
+            payment.Amount =
+                order.TotalAmount;
+
+            payment.Method =
+                PaymentMethod.ESewa;
+
+            payment.Status =
+                PaymentStatus.Pending;
+
+            payment.PaymentDate =
+                DateTime.UtcNow;
+
+
+            await _context.SaveChangesAsync(
+                cancellationToken);
+
+
+            _logger.LogInformation(
+                "Reset failed eSewa payment for retry. " +
+                "OrderId: {OrderId}, NewTransactionUuid: {TransactionUuid}",
+                order.Id,
+                transactionUuid);
+        }
+
+
+        // ========================================================
+        // OTHER PAYMENT STATUS
+        // ========================================================
+
+        else
+        {
+            throw new InvalidOperationException(
+                "The payment cannot be processed in its current state.");
+        }
+
+
+        // ========================================================
+        // AMOUNT
+        // ========================================================
+
+        var amount =
+            payment.Amount;
+
+
+        var amountText =
+            amount.ToString(
+                "0.00",
+                CultureInfo.InvariantCulture);
+
+
+        // ========================================================
+        // SIGNATURE MESSAGE
+        //
+        // The signed fields must exactly match:
+        //
+        // total_amount
+        // transaction_uuid
+        // product_code
+        // ========================================================
 
         var signatureMessage =
             $"total_amount={amountText}," +
             $"transaction_uuid={transactionUuid}," +
             $"product_code={_settings.ProductCode}";
 
-        var signature = GenerateSignature(
-            signatureMessage,
-            _settings.SecretKey);
 
-        // --------------------------------------------------------
-        // Create pending payment
-        // --------------------------------------------------------
+        var signature =
+            GenerateSignature(
+                signatureMessage,
+                _settings.SecretKey);
 
-        var payment = new ECommerce.Domain.Entities.Payment
-        {
-            OrderId = order.Id,
-            Amount = amount,
-            Method = PaymentMethod.ESewa,
-            Status = PaymentStatus.Pending,
 
-            // Stable internal/provider correlation identifier
-            TransactionId = transactionUuid,
+        // ========================================================
+        // BUILD ESEWA FORM DATA
+        // ========================================================
 
-            PaymentDate = DateTime.UtcNow
-        };
+        var formData =
+            new Dictionary<string, string>
+            {
+                ["amount"] =
+                    amountText,
 
-        await _context.Payments.AddAsync(
-            payment,
-            cancellationToken);
+                ["tax_amount"] =
+                    "0",
 
-        await _context.SaveChangesAsync(
-            cancellationToken);
+                ["total_amount"] =
+                    amountText,
 
-        _logger.LogInformation(
-            "eSewa payment initiated for OrderId {OrderId}. " +
-            "TransactionUuid: {TransactionUuid}, Amount: {Amount}",
-            order.Id,
-            transactionUuid,
-            amount);
+                ["transaction_uuid"] =
+                    transactionUuid,
 
-        // --------------------------------------------------------
-        // Build eSewa form data
-        // --------------------------------------------------------
+                ["product_code"] =
+                    _settings.ProductCode,
 
-        var formData = new Dictionary<string, string>
-        {
-            ["amount"] = amountText,
+                ["product_service_charge"] =
+                    "0",
 
-            ["tax_amount"] = "0",
+                ["product_delivery_charge"] =
+                    "0",
 
-            ["total_amount"] = amountText,
+                ["success_url"] =
+                    _settings.SuccessUrl,
 
-            ["transaction_uuid"] = transactionUuid,
+                ["failure_url"] =
+                    _settings.FailureUrl,
 
-            ["product_code"] = _settings.ProductCode,
+                ["signed_field_names"] =
+                    "total_amount,transaction_uuid,product_code",
 
-            ["product_service_charge"] = "0",
+                ["signature"] =
+                    signature
+            };
 
-            ["product_delivery_charge"] = "0",
 
-            ["success_url"] = _settings.SuccessUrl,
-
-            ["failure_url"] = _settings.FailureUrl,
-
-            ["signed_field_names"] =
-                "total_amount,transaction_uuid,product_code",
-
-            ["signature"] = signature
-        };
+        // ========================================================
+        // RETURN PAYMENT INITIATION RESPONSE
+        // ========================================================
 
         return new ESewaPaymentInitiationDto
         {
-            OrderId = order.Id,
+            OrderId =
+                order.Id,
 
-            Amount = amount,
+            Amount =
+                amount,
 
-            TransactionUuid = transactionUuid,
+            TransactionUuid =
+                transactionUuid,
 
-            PaymentUrl = _settings.BaseUrl,
+            PaymentUrl =
+                _settings.BaseUrl,
 
-            FormData = formData
+            FormData =
+                formData
         };
     }
 
@@ -182,20 +374,10 @@ public class EsewaPaymentService : IEsewaPaymentService
     // VERIFY ESEWA PAYMENT
     //
     // IMPORTANT:
-    // Callback data alone is NOT trusted as proof of payment.
     //
-    // This method calls eSewa's server-side status API and verifies:
+    // Callback data is NOT trusted as proof of payment.
     //
-    // 1. Payment exists
-    // 2. Payment method is eSewa
-    // 3. Payment status is COMPLETE
-    // 4. transaction_uuid matches
-    // 5. total_amount matches
-    //
-    // Only then:
-    //
-    // Payment -> Paid
-    // Order   -> Confirmed
+    // We call eSewa's server-side Status API.
     // ============================================================
 
     public async Task<bool> VerifyPaymentAsync(
@@ -203,266 +385,387 @@ public class EsewaPaymentService : IEsewaPaymentService
         string transactionUuid,
         CancellationToken cancellationToken = default)
     {
-        // --------------------------------------------------------
-        // Find payment using stable transaction UUID
-        // --------------------------------------------------------
+        // ========================================================
+        // FIND PAYMENT
+        // ========================================================
 
-        var payment = await _context.Payments
-            .Include(p => p.Order)
-            .FirstOrDefaultAsync(
-                p => p.OrderId == orderId &&
-                     p.TransactionId == transactionUuid,
-                cancellationToken);
+        var payment =
+            await _context.Payments
+                .Include(p => p.Order)
+                .FirstOrDefaultAsync(
+                    p =>
+                        p.OrderId == orderId &&
+                        p.TransactionId == transactionUuid,
+                    cancellationToken);
+
 
         if (payment == null)
         {
+            _logger.LogWarning(
+                "eSewa payment not found. " +
+                "OrderId: {OrderId}, TransactionUuid: {TransactionUuid}",
+                orderId,
+                transactionUuid);
+
             return false;
         }
+
+
+        // ========================================================
+        // VALIDATE PAYMENT METHOD
+        // ========================================================
 
         if (payment.Method != PaymentMethod.ESewa)
         {
+            _logger.LogWarning(
+                "Payment method mismatch during eSewa verification. " +
+                "OrderId: {OrderId}",
+                orderId);
+
             return false;
         }
 
-        // Already verified successfully
+
+        // ========================================================
+        // ALREADY PAID
+        //
+        // Makes verification idempotent.
+        // ========================================================
+
         if (payment.Status == PaymentStatus.Paid)
         {
+            _logger.LogInformation(
+                "eSewa payment already verified. " +
+                "OrderId: {OrderId}, TransactionUuid: {TransactionUuid}",
+                orderId,
+                transactionUuid);
+
             return true;
         }
 
-        // --------------------------------------------------------
-        // Build eSewa status verification URL
-        // --------------------------------------------------------
+
+        // ========================================================
+        // BUILD ESEWA STATUS API URL
+        // ========================================================
+
+        var amountText =
+            payment.Amount.ToString(
+                "0.00",
+                CultureInfo.InvariantCulture);
+
 
         var query =
             $"product_code={Uri.EscapeDataString(_settings.ProductCode)}" +
-            $"&total_amount={Uri.EscapeDataString(
-                payment.Amount.ToString(
-                    "0.00",
-                    CultureInfo.InvariantCulture))}" +
-            $"&transaction_uuid={Uri.EscapeDataString(
-                transactionUuid)}";
+            $"&total_amount={Uri.EscapeDataString(amountText)}" +
+            $"&transaction_uuid={Uri.EscapeDataString(transactionUuid)}";
+
 
         var requestUrl =
             $"{_settings.StatusUrl}?{query}";
 
-        // --------------------------------------------------------
-        // Call eSewa server-side verification API
-        // --------------------------------------------------------
 
-        using var response = await _httpClient.GetAsync(
-            requestUrl,
-            cancellationToken);
+        _logger.LogInformation(
+            "Calling eSewa status API. " +
+            "OrderId: {OrderId}, TransactionUuid: {TransactionUuid}",
+            payment.OrderId,
+            transactionUuid);
 
-        var responseBody =
-            await response.Content.ReadAsStringAsync(
+
+        // ========================================================
+        // CALL ESEWA STATUS API
+        // ========================================================
+
+        using var response =
+            await _httpClient.GetAsync(
+                requestUrl,
                 cancellationToken);
 
-        // --------------------------------------------------------
-        // HTTP request failed
-        // --------------------------------------------------------
+
+        var responseBody =
+            await response.Content
+                .ReadAsStringAsync(
+                    cancellationToken);
+
+
+        // ========================================================
+        // HTTP FAILURE
+        // ========================================================
 
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning(
-                "eSewa verification HTTP request failed for " +
-                "OrderId {OrderId}, TransactionUuid {TransactionUuid}. " +
-                "StatusCode: {StatusCode}. Response: {ResponseBody}",
+                "eSewa verification HTTP request failed. " +
+                "OrderId: {OrderId}, TransactionUuid: {TransactionUuid}, " +
+                "StatusCode: {StatusCode}, Response: {ResponseBody}",
                 payment.OrderId,
                 transactionUuid,
                 response.StatusCode,
                 responseBody);
 
-            payment.Status = PaymentStatus.Failed;
+
+            payment.Status =
+                PaymentStatus.Failed;
+
 
             await _context.SaveChangesAsync(
                 cancellationToken);
 
+
             return false;
         }
 
-        // --------------------------------------------------------
-        // Parse verification response
-        // --------------------------------------------------------
 
-        using var document =
-            JsonDocument.Parse(responseBody);
+        // ========================================================
+        // PARSE JSON RESPONSE
+        // ========================================================
 
-        var root = document.RootElement;
+        JsonDocument document;
 
-        // --------------------------------------------------------
-        // IMPORTANT JSON FIX
-        //
-        // eSewa may return some values as JSON Strings or Numbers.
-        //
-        // Using GetJsonValueAsString prevents:
-        //
-        // "The requested operation requires an element of type
-        // 'String', but the target element has type 'Number'."
-        // --------------------------------------------------------
 
-        var status = GetJsonValueAsString(
-            root,
-            "status");
-
-        var responseTransactionUuid = GetJsonValueAsString(
-            root,
-            "transaction_uuid");
-
-        var responseTotalAmount = GetJsonValueAsString(
-            root,
-            "total_amount");
-
-        // --------------------------------------------------------
-        // Verify status
-        // --------------------------------------------------------
-
-        if (!string.Equals(
-                status,
-                "COMPLETE",
-                StringComparison.OrdinalIgnoreCase))
+        try
         {
-            _logger.LogWarning(
-                "eSewa verification returned non-complete status " +
-                "for OrderId {OrderId}, TransactionUuid {TransactionUuid}. " +
-                "Status: {Status}",
+            document =
+                JsonDocument.Parse(responseBody);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Invalid JSON received from eSewa status API. " +
+                "OrderId: {OrderId}",
+                payment.OrderId);
+
+
+            payment.Status =
+                PaymentStatus.Failed;
+
+
+            await _context.SaveChangesAsync(
+                cancellationToken);
+
+
+            return false;
+        }
+
+
+        using (document)
+        {
+            var root =
+                document.RootElement;
+
+
+            // ====================================================
+            // EXTRACT VALUES SAFELY
+            // ====================================================
+
+            var status =
+                GetJsonValueAsString(
+                    root,
+                    "status");
+
+
+            var responseTransactionUuid =
+                GetJsonValueAsString(
+                    root,
+                    "transaction_uuid");
+
+
+            var responseTotalAmount =
+                GetJsonValueAsString(
+                    root,
+                    "total_amount");
+
+
+            // ====================================================
+            // VERIFY STATUS
+            // ====================================================
+
+            if (!string.Equals(
+                    status,
+                    "COMPLETE",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "eSewa returned non-complete status. " +
+                    "OrderId: {OrderId}, TransactionUuid: {TransactionUuid}, " +
+                    "Status: {Status}",
+                    payment.OrderId,
+                    transactionUuid,
+                    status);
+
+
+                payment.Status =
+                    PaymentStatus.Failed;
+
+
+                await _context.SaveChangesAsync(
+                    cancellationToken);
+
+
+                return false;
+            }
+
+
+            // ====================================================
+            // VERIFY TRANSACTION UUID
+            // ====================================================
+
+            if (!string.Equals(
+                    responseTransactionUuid,
+                    transactionUuid,
+                    StringComparison.Ordinal))
+            {
+                _logger.LogWarning(
+                    "eSewa transaction UUID mismatch. " +
+                    "OrderId: {OrderId}, Expected: {Expected}, Actual: {Actual}",
+                    payment.OrderId,
+                    transactionUuid,
+                    responseTransactionUuid);
+
+
+                payment.Status =
+                    PaymentStatus.Failed;
+
+
+                await _context.SaveChangesAsync(
+                    cancellationToken);
+
+
+                return false;
+            }
+
+
+            // ====================================================
+            // PARSE VERIFIED AMOUNT
+            // ====================================================
+
+            if (!decimal.TryParse(
+                    responseTotalAmount,
+                    NumberStyles.Any,
+                    CultureInfo.InvariantCulture,
+                    out var verifiedAmount))
+            {
+                _logger.LogWarning(
+                    "Unable to parse verified eSewa amount. " +
+                    "OrderId: {OrderId}, Value: {Value}",
+                    payment.OrderId,
+                    responseTotalAmount);
+
+
+                payment.Status =
+                    PaymentStatus.Failed;
+
+
+                await _context.SaveChangesAsync(
+                    cancellationToken);
+
+
+                return false;
+            }
+
+
+            // ====================================================
+            // VERIFY AMOUNT
+            // ====================================================
+
+            if (verifiedAmount != payment.Amount)
+            {
+                _logger.LogWarning(
+                    "eSewa amount mismatch. " +
+                    "OrderId: {OrderId}, Expected: {Expected}, Actual: {Actual}",
+                    payment.OrderId,
+                    payment.Amount,
+                    verifiedAmount);
+
+
+                payment.Status =
+                    PaymentStatus.Failed;
+
+
+                await _context.SaveChangesAsync(
+                    cancellationToken);
+
+
+                return false;
+            }
+
+
+            // ====================================================
+            // GET PROVIDER TRANSACTION CODE
+            //
+            // IMPORTANT:
+            //
+            // Do NOT overwrite TransactionId.
+            //
+            // TransactionId remains our transaction_uuid.
+            // ====================================================
+
+            var transactionCode =
+                GetJsonValueAsString(
+                    root,
+                    "transaction_code");
+
+
+            // ====================================================
+            // MARK PAYMENT AS PAID
+            // ====================================================
+
+            payment.Status =
+                PaymentStatus.Paid;
+
+
+            if (!string.IsNullOrWhiteSpace(
+                    transactionCode))
+            {
+                payment.ESewaTransactionCode =
+                    transactionCode;
+            }
+
+
+            // ====================================================
+            // CONFIRM ORDER
+            // ====================================================
+
+            if (payment.Order.Status ==
+                OrderStatus.Pending)
+            {
+                payment.Order.Status =
+                    OrderStatus.Confirmed;
+            }
+
+
+            // ====================================================
+            // SAVE CHANGES
+            // ====================================================
+
+            await _context.SaveChangesAsync(
+                cancellationToken);
+
+
+            _logger.LogInformation(
+                "eSewa payment successfully verified. " +
+                "OrderId: {OrderId}, TransactionUuid: {TransactionUuid}, " +
+                "TransactionCode: {TransactionCode}",
                 payment.OrderId,
                 transactionUuid,
-                status);
+                transactionCode);
 
-            payment.Status = PaymentStatus.Failed;
 
-            await _context.SaveChangesAsync(
-                cancellationToken);
-
-            return false;
+            return true;
         }
-
-        // --------------------------------------------------------
-        // Verify transaction UUID
-        // --------------------------------------------------------
-
-        if (!string.Equals(
-                responseTransactionUuid,
-                transactionUuid,
-                StringComparison.Ordinal))
-        {
-            _logger.LogWarning(
-                "eSewa transaction UUID mismatch for OrderId {OrderId}. " +
-                "Expected: {ExpectedTransactionUuid}, Actual: {ActualTransactionUuid}",
-                payment.OrderId,
-                transactionUuid,
-                responseTransactionUuid);
-
-            payment.Status = PaymentStatus.Failed;
-
-            await _context.SaveChangesAsync(
-                cancellationToken);
-
-            return false;
-        }
-
-        // --------------------------------------------------------
-        // Verify amount
-        // --------------------------------------------------------
-
-        if (!decimal.TryParse(
-                responseTotalAmount,
-                NumberStyles.Any,
-                CultureInfo.InvariantCulture,
-                out var verifiedAmount))
-        {
-            _logger.LogWarning(
-                "Unable to parse eSewa verified amount for " +
-                "OrderId {OrderId}, TransactionUuid {TransactionUuid}. " +
-                "Value: {ResponseTotalAmount}",
-                payment.OrderId,
-                transactionUuid,
-                responseTotalAmount);
-
-            payment.Status = PaymentStatus.Failed;
-
-            await _context.SaveChangesAsync(
-                cancellationToken);
-
-            return false;
-        }
-
-        if (verifiedAmount != payment.Amount)
-        {
-            _logger.LogWarning(
-                "eSewa amount mismatch for OrderId {OrderId}. " +
-                "Expected: {ExpectedAmount}, Actual: {ActualAmount}",
-                payment.OrderId,
-                payment.Amount,
-                verifiedAmount);
-
-            payment.Status = PaymentStatus.Failed;
-
-            await _context.SaveChangesAsync(
-                cancellationToken);
-
-            return false;
-        }
-
-        // --------------------------------------------------------
-        // Extract provider transaction code
-        //
-        // IMPORTANT:
-        // This must NOT overwrite TransactionId.
-        // --------------------------------------------------------
-
-        var transactionCode = GetJsonValueAsString(
-            root,
-            "transaction_code");
-
-        // --------------------------------------------------------
-        // Payment successfully verified
-        // --------------------------------------------------------
-
-        payment.Status = PaymentStatus.Paid;
-
-        if (!string.IsNullOrWhiteSpace(transactionCode))
-        {
-            payment.ESewaTransactionCode =
-                transactionCode;
-        }
-
-        // --------------------------------------------------------
-        // Confirm order
-        // --------------------------------------------------------
-
-        if (payment.Order.Status == OrderStatus.Pending)
-        {
-            payment.Order.Status =
-                OrderStatus.Confirmed;
-        }
-
-        await _context.SaveChangesAsync(
-            cancellationToken);
-
-        _logger.LogInformation(
-            "eSewa payment completed successfully for " +
-            "OrderId {OrderId}. TransactionUuid: {TransactionUuid}",
-            payment.OrderId,
-            transactionUuid);
-
-        return true;
     }
 
 
     // ============================================================
     // SAFE JSON VALUE EXTRACTION
     //
-    // Handles both:
+    // Supports:
     //
     // "total_amount": "100.00"
     //
     // and:
     //
     // "total_amount": 100
-    //
-    // without throwing InvalidOperationException.
     // ============================================================
 
     private static string? GetJsonValueAsString(
@@ -475,6 +778,7 @@ public class EsewaPaymentService : IEsewaPaymentService
         {
             return null;
         }
+
 
         return element.ValueKind switch
         {
@@ -490,7 +794,8 @@ public class EsewaPaymentService : IEsewaPaymentService
             JsonValueKind.False =>
                 "false",
 
-            _ => null
+            _ =>
+                null
         };
     }
 
@@ -504,18 +809,26 @@ public class EsewaPaymentService : IEsewaPaymentService
         string secretKey)
     {
         var keyBytes =
-            Encoding.UTF8.GetBytes(secretKey);
+            Encoding.UTF8.GetBytes(
+                secretKey);
+
 
         var messageBytes =
-            Encoding.UTF8.GetBytes(message);
+            Encoding.UTF8.GetBytes(
+                message);
+
 
         using var hmac =
-            new HMACSHA256(keyBytes);
+            new HMACSHA256(
+                keyBytes);
+
 
         var hash =
-            hmac.ComputeHash(messageBytes);
+            hmac.ComputeHash(
+                messageBytes);
 
-        return Convert.ToBase64String(hash);
+
+        return Convert.ToBase64String(
+            hash);
     }
 }
-

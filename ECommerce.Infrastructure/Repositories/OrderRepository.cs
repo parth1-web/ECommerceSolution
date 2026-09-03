@@ -16,12 +16,13 @@ public class OrderRepository : IOrderRepository
     }
 
     public async Task<Order?> GetByIdAsync(
-        int orderId,
-        int userId,
-        CancellationToken cancellationToken = default)
+    int orderId,
+    int userId,
+    CancellationToken cancellationToken = default)
     {
         return await _context.Orders
             .Include(o => o.OrderItems)
+            .Include(o => o.Payment)
             .FirstOrDefaultAsync(
                 o => o.Id == orderId &&
                      o.UserId == userId,
@@ -100,11 +101,12 @@ public class OrderRepository : IOrderRepository
     }
 
     public async Task<List<Order>> GetOrdersByStatusAsync(
-        OrderStatus status,
-        CancellationToken cancellationToken = default)
+    OrderStatus status,
+    CancellationToken cancellationToken = default)
     {
         return await _context.Orders
             .Include(o => o.OrderItems)
+            .Include(o => o.Payment)
             .Where(o => o.Status == status)
             .OrderByDescending(o => o.OrderDate)
             .ToListAsync(cancellationToken);

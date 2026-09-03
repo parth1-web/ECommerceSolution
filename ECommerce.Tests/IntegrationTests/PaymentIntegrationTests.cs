@@ -507,15 +507,23 @@ public class PaymentIntegrationTests :
 
     // ============================================================
     // TEST 7
-    // eSewa failure callback
+    // eSewa failure callback without data
     // ============================================================
 
     [Fact]
-    public async Task EsewaFailure_ReturnsBadRequest()
+    public async Task EsewaFailure_WithoutData_RedirectsToMvcFailure()
     {
         // Arrange
+        //
+        // Disable automatic redirects so we can verify the
+        // response returned directly by the API.
+        //
         var client =
-            _factory.CreateClient();
+            _factory.CreateClient(
+                new WebApplicationFactoryClientOptions
+                {
+                    AllowAutoRedirect = false
+                });
 
 
         // Act
@@ -525,18 +533,40 @@ public class PaymentIntegrationTests :
 
 
         // Assert
+        //
+        // Missing eSewa callback data should redirect the
+        // customer to the MVC payment failure page.
+        //
         Assert.Equal(
-            HttpStatusCode.BadRequest,
+            HttpStatusCode.Redirect,
             response.StatusCode);
 
 
-        var responseBody =
-            await response.Content
-                .ReadAsStringAsync();
+        // --------------------------------------------------------
+        // Verify redirect location
+        // --------------------------------------------------------
+
+        Assert.NotNull(
+            response.Headers.Location);
+
+
+        var location =
+            response.Headers.Location!.ToString();
+
 
         Assert.Contains(
-            "failed",
-            responseBody,
+            "/Payment/Failure",
+            location,
+            StringComparison.OrdinalIgnoreCase);
+
+
+        // --------------------------------------------------------
+        // Verify failure message
+        // --------------------------------------------------------
+
+        Assert.Contains(
+            "cancelled",
+            location,
             StringComparison.OrdinalIgnoreCase);
     }
 

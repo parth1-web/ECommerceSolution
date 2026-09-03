@@ -540,6 +540,7 @@ public class PaymentsController : ControllerBase
     // ESEWA FAILURE CALLBACK
     //
     // GET:
+    // api/Payments/esewa/failure
     // api/Payments/esewa/failure?data=BASE64_DATA
     // =========================================================
 
@@ -549,25 +550,28 @@ public class PaymentsController : ControllerBase
         [FromQuery] string? data)
     {
         // =====================================================
-        // IMPORTANT:
+        // IMPORTANT
         //
-        // Your existing test expects:
+        // eSewa may redirect to failure_url without callback
+        // data when:
         //
-        // GET /api/Payments/esewa/failure
+        // - User cancels payment
+        // - Payment fails
+        // - Payment is abandoned
         //
-        // without data
+        // Missing data should NOT display an API error page.
         //
-        // => 400 BadRequest
+        // Redirect the user back to the MVC application.
         // =====================================================
 
         if (string.IsNullOrWhiteSpace(data))
         {
-            return BadRequest(new
-            {
-                success = false,
-                message =
-                    "eSewa payment failed: failure callback data is missing."
-            });
+            _logger.LogWarning(
+                "eSewa failure callback received without callback data.");
+
+            return RedirectToMvcFailure(
+                null,
+                "Your eSewa payment was cancelled or could not be completed.");
         }
 
 
@@ -575,17 +579,17 @@ public class PaymentsController : ControllerBase
 
 
         // =====================================================
-        // DECODE FAILURE DATA
+        // DECODE BASE64 DATA
         // =====================================================
 
         if (!TryDecodeBase64(data, out var decodedData))
         {
-            return BadRequest(new
-            {
-                success = false,
-                message =
-                    "Invalid Base64 eSewa failure data."
-            });
+            _logger.LogWarning(
+                "Invalid Base64 data received from eSewa failure callback.");
+
+            return RedirectToMvcFailure(
+                null,
+                "Your eSewa payment could not be completed.");
         }
 
 
@@ -601,6 +605,10 @@ public class PaymentsController : ControllerBase
             var root = document.RootElement;
 
 
+            // =================================================
+            // TRANSACTION UUID
+            // =================================================
+
             if (root.TryGetProperty(
                     "transaction_uuid",
                     out var transactionUuidElement))
@@ -609,6 +617,10 @@ public class PaymentsController : ControllerBase
                     transactionUuidElement.GetString();
             }
 
+
+            // =================================================
+            // STATUS
+            // =================================================
 
             var status =
                 root.TryGetProperty(
@@ -619,9 +631,19 @@ public class PaymentsController : ControllerBase
 
 
             _logger.LogWarning(
-                "eSewa failure callback received. TransactionUuid: {TransactionUuid}, Status: {Status}",
+                "eSewa failure callback received. " +
+                "TransactionUuid: {TransactionUuid}, Status: {Status}",
                 transactionUuid,
                 status);
+
+
+            // =================================================
+            // OPTIONAL:
+            // MARK PAYMENT AS FAILED
+            //
+            // This is optional and depends on your desired
+            // retry/payment persistence flow.
+            // =================================================
         }
         catch (JsonException ex)
         {
@@ -629,17 +651,14 @@ public class PaymentsController : ControllerBase
                 ex,
                 "Invalid JSON received from eSewa failure callback.");
 
-            return BadRequest(new
-            {
-                success = false,
-                message =
-                    "Invalid eSewa failure callback JSON."
-            });
+            return RedirectToMvcFailure(
+                null,
+                "Your eSewa payment could not be completed.");
         }
 
 
         // =====================================================
-        // REDIRECT TO MVC FAILURE PAGE
+        // REDIRECT CUSTOMER TO MVC
         // =====================================================
 
         return RedirectToMvcFailure(

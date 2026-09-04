@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 
@@ -209,6 +209,13 @@ public class PaymentsController : ControllerBase
                 "Khalti payment verified successfully. Pidx: {Pidx}",
                 pidx);
 
+            var mvcBaseUrl = _configuration["Mvc:BaseUrl"];
+            if (!string.IsNullOrWhiteSpace(mvcBaseUrl) &&
+                (Request.Headers.Accept.ToString().Contains("text/html") || !Request.Headers.Accept.ToString().Contains("application/json")))
+            {
+                return RedirectToMvcSuccess(payment.OrderId, pidx);
+            }
+
             return Ok(new
             {
                 success = true,
@@ -223,11 +230,40 @@ public class PaymentsController : ControllerBase
                 "Khalti payment verification failed. Pidx: {Pidx}",
                 pidx);
 
+            var mvcBaseUrl = _configuration["Mvc:BaseUrl"];
+            if (!string.IsNullOrWhiteSpace(mvcBaseUrl) &&
+                (Request.Headers.Accept.ToString().Contains("text/html") || !Request.Headers.Accept.ToString().Contains("application/json")))
+            {
+                return RedirectToMvcFailure(pidx, ex.Message);
+            }
+
             return BadRequest(new
             {
                 success = false,
                 message = ex.Message
             });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Unexpected error during Khalti verification. Pidx: {Pidx}",
+                pidx);
+
+            var mvcBaseUrl = _configuration["Mvc:BaseUrl"];
+            if (!string.IsNullOrWhiteSpace(mvcBaseUrl) &&
+                (Request.Headers.Accept.ToString().Contains("text/html") || !Request.Headers.Accept.ToString().Contains("application/json")))
+            {
+                return RedirectToMvcFailure(pidx, "An unexpected error occurred while verifying your Khalti payment.");
+            }
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    success = false,
+                    message = "An unexpected error occurred while verifying your Khalti payment."
+                });
         }
     }
 

@@ -24,6 +24,26 @@ var builder = WebApplication.CreateBuilder(args);
 
 
 // ==========================================================
+// Frontend CORS
+// ==========================================================
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy.WithOrigins(
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+                "http://localhost:5173",
+                "http://localhost:5174",
+                "https://ecommerce-web.onrender.com")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
+
+// ==========================================================
 // Controllers
 // ==========================================================
 
@@ -334,6 +354,8 @@ using (var scope = app.Services.CreateScope())
     await context.Database.MigrateAsync();
 
     await AdminSeeder.SeedAsync(context);
+
+    await ProductSeeder.SeedAsync(context);
 }
 
 // --------------------------------------------------
@@ -351,6 +373,8 @@ app.UseSwaggerUI();
 // ==========================================================
 
 app.UseHttpsRedirection();
+
+app.UseCors("Frontend");
 
 
 // ==========================================================

@@ -74,7 +74,7 @@ public static class ProductSeeder
                 Stock = 50,
 
                 ImageUrl =
-                    "https://images.unsplash.com/photo-1601050690597-df0568f70950",
+                    "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCwiTWkCSZVOR8h1umWz6GV-MAkVBuQrzoFyOhmvfQJg&s=10",
 
                 CategoryId = category.Id,
 
@@ -95,7 +95,7 @@ public static class ProductSeeder
                 Stock = 45,
 
                 ImageUrl =
-                    "https://images.unsplash.com/photo-1547592180-85f173990554",
+                    "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQi39nNQyCeGMQUSLQecuMIhEJHrairteaMOKD453FXEQ&s=10",
 
                 CategoryId = category.Id,
 
@@ -116,7 +116,7 @@ public static class ProductSeeder
                 Stock = 40,
 
                 ImageUrl =
-                    "https://images.unsplash.com/photo-1596040033229-a9821ebd058d",
+                    "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSVgl6XXCKfkhTWn_V6PstTCmjtN5Z9pEPYUhOQlMY0ZA&s=10",
 
                 CategoryId = category.Id,
 
@@ -137,7 +137,7 @@ public static class ProductSeeder
                 Stock = 60,
 
                 ImageUrl =
-                    "https://images.unsplash.com/photo-1590502593747-42a996133562",
+                    "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRzxWPUmom__wXm71SjdDCp-eqn6GJlDHJ3BaeyN99-Iw&s=10",
 
                 CategoryId = category.Id,
 
@@ -158,7 +158,7 @@ public static class ProductSeeder
                 Stock = 50,
 
                 ImageUrl =
-                    "https://images.unsplash.com/photo-1540148426945-6cf22a6b2383",
+                    "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRcBmHbNlSPfrvGEXhrLnVnSC8LG0GESeCYEMgoPcT-Ag&s",
 
                 CategoryId = category.Id,
 
@@ -179,7 +179,7 @@ public static class ProductSeeder
                 Stock = 45,
 
                 ImageUrl =
-                    "https://images.unsplash.com/photo-1601050690597-df0568f70950",
+                    "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS_LbxqioAb7Hn9Q3fwNm1cdPSzu6nUuS3ZhrU1VRu0fQ&s=10",
 
                 CategoryId = category.Id,
 

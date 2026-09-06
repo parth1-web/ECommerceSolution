@@ -14,6 +14,13 @@
 
         public string ImageUrl { get; set; } = string.Empty;
 
+        // Product-specific information
+        public string Ingredients { get; set; } = string.Empty;
+
+        public string BestPairings { get; set; } = string.Empty;
+
+        public string StorageAndShelfLife { get; set; } = string.Empty;
+
         public bool IsActive { get; set; }
 
         public DateTime CreatedAt { get; set; }

@@ -19,6 +19,15 @@ namespace ECommerce.Application.DTOs.Products
 
         public string ImageUrl { get; set; } = string.Empty;
 
+        [StringLength(4000)]
+        public string Ingredients { get; set; } = string.Empty;
+
+        [StringLength(2000)]
+        public string BestPairings { get; set; } = string.Empty;
+
+        [StringLength(2000)]
+        public string StorageAndShelfLife { get; set; } = string.Empty;
+
         public bool IsActive { get; set; }
 
         [Range(1, int.MaxValue)]

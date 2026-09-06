@@ -14,13 +14,18 @@
 
         public string ImageUrl { get; set; } = string.Empty;
 
+        public string Ingredients { get; set; } = string.Empty;
+
+        public string BestPairings { get; set; } = string.Empty;
+
+        public string StorageAndShelfLife { get; set; } = string.Empty;
+
         public bool IsActive { get; set; }
 
         public DateTime CreatedAt { get; set; }
 
         public int CategoryId { get; set; }
 
-        public string CategoryName { get; set; }
-            = string.Empty;
+        public string CategoryName { get; set; } = string.Empty;
     }
 }

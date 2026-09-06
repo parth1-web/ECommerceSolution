@@ -119,11 +119,15 @@ namespace ECommerce.Application.Services
                 Price = product.Price,
                 Stock = product.Stock,
                 ImageUrl = product.ImageUrl,
+
+                Ingredients = product.Ingredients,
+                BestPairings = product.BestPairings,
+                StorageAndShelfLife = product.StorageAndShelfLife,
+
                 IsActive = product.IsActive,
                 CreatedAt = product.CreatedAt,
                 CategoryId = product.CategoryId,
-                CategoryName =
-                    product.Category?.Name ?? string.Empty
+                CategoryName = product.Category?.Name ?? string.Empty
             };
         }
         public async Task<PagedResult<ProductDto>> SearchAsync(

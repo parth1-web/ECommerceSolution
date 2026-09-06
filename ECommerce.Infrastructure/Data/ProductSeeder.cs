@@ -186,7 +186,136 @@ public static class ProductSeeder
                 IsActive = true,
 
                 CreatedAt = DateTime.UtcNow
-            }
+            },
+
+         
+new Product
+{
+    Name = "Buffalo Meat Achar",
+
+    Description =
+        "Traditional Nepali buffalo meat pickle prepared with tender buffalo meat, mustard oil, chilli, garlic, ginger, turmeric and aromatic Himalayan spices.",
+
+    Price = 850.00m,
+
+    Stock = 35,
+
+    ImageUrl =
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSl-XrYcXZ5YiOYsT7yOGl6E5479MP1QXh67MJJRds56g&s",
+
+    CategoryId = category.Id,
+
+    IsActive = true,
+
+    CreatedAt = DateTime.UtcNow
+},
+
+new Product
+{
+    Name = "Chicken Achar",
+
+    Description =
+        "Delicious Nepali-style chicken pickle made with tender chicken pieces, mustard oil, chilli, garlic, ginger and a blend of traditional spices.",
+
+    Price = 750.00m,
+
+    Stock = 40,
+
+    ImageUrl =
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSDArE5Bu_4owY10GHRO-UEenIPVs5HRd5hiCBSEc2fMw&s=10",
+
+    CategoryId = category.Id,
+
+    IsActive = true,
+
+    CreatedAt = DateTime.UtcNow
+},
+
+new Product
+{
+    Name = "Pork Achar",
+
+    Description =
+        "Rich and flavorful pork pickle prepared with tender pork, mustard oil, dried chilli, garlic, ginger and traditional Nepali spices.",
+
+    Price = 800.00m,
+
+    Stock = 35,
+
+    ImageUrl =
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ8L9z4WS3B4T9Qnm3SLO8mrIU4XH0WMPBlMDgagVCs6g&s=10",
+
+    CategoryId = category.Id,
+
+    IsActive = true,
+
+    CreatedAt = DateTime.UtcNow
+},
+
+new Product
+{
+    Name = "Mutton Achar",
+
+    Description =
+        "Traditional mutton pickle made with tender mutton pieces, mustard oil, chilli, garlic, ginger and aromatic Nepali spices for a rich and spicy taste.",
+
+    Price = 1000.00m,
+
+    Stock = 30,
+
+    ImageUrl =
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS-Pb_OYMYEW6ouqnnItTjx4314rY6_s5i5kt2xSDl5Ww&s=10",
+
+    CategoryId = category.Id,
+
+    IsActive = true,
+
+    CreatedAt = DateTime.UtcNow
+},
+
+new Product
+{
+    Name = "Buffalo Sukuti Achar",
+
+    Description =
+        "Authentic Nepali sukuti pickle made from dried buffalo meat, mustard oil, chilli, garlic, ginger, Timur and traditional spices.",
+
+    Price = 950.00m,
+
+    Stock = 30,
+
+    ImageUrl =
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTHFVMUHF5-UFpu1-64WcYZtU3xe_Idznn6m5dnwCjpaw&s=10",
+
+    CategoryId = category.Id,
+
+    IsActive = true,
+
+    CreatedAt = DateTime.UtcNow
+},
+
+new Product
+{
+    Name = "Chicken Sukuti Achar",
+
+    Description =
+        "Spicy chicken sukuti pickle prepared from dried chicken, mustard oil, chilli, garlic, ginger, Timur and traditional Nepali spices.",
+
+    Price = 600.00m,
+
+    Stock = 30,
+
+    ImageUrl =
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSUvdEX6ieJDrZ0bjnubOW6kKFrHZiWvcb4EVuncArI-w&s=10",
+
+    CategoryId = category.Id,
+
+    IsActive = true,
+
+    CreatedAt = DateTime.UtcNow
+},
+
+
         };
 
         // ==========================================================
